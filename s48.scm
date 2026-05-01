@@ -7,6 +7,8 @@
 (define s48-< <)
 (define s48-integer? integer?)
 (define s48-rational? rational?)
+(define number? s48-integer?)
+(define rational? s48-integer?)
 
 ;; It would be easier to use "and" in the code below, but that will
 ;; get redefined for the test code when loading undefine.scm.
