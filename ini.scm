@@ -1,179 +1,216 @@
+;; Type predicates
 (define (integer? x) (s48-integer? x))
 
 (define (rational? x)
   (or (integer? x)
       (and (pair? x)
-	   (eq? (car x) 'rational)
-	   (pair? (cdr x))
-	   (integer? (cadr x))
-	   (pair? (cddr x))
-	   (integer? (caddr x))
-	   (null? (cdddr x)))))
+           (eq? (car x) 'rational)
+           (pair? (cdr x))
+           (integer? (car (cdr x)))
+           (pair? (cdr (cdr x)))
+           (integer? (car (cdr (cdr x))))
+           (null? (cdr (cdr (cdr x)))))))
 
 (define (number? x) (rational? x))
 
+;; Numerator and denominator
 (define (numerator x)
-  (cond ((integer? x) x)
-	((rational? x) (cadr x))
-	(else (error "numerator: not a number" x))))
+  (if (integer? x) x (car (cdr x))))
 
 (define (denominator x)
-  (cond ((integer? x) 1)
-	((rational? x) (caddr x))
-	(else (error "denominator: not a number" x))))
+  (if (integer? x) 1 (car (cdr (cdr x)))))
 
-;; Helper for integer absolute value to avoid recursion in gcd
-(define (b-abs x)
-  (if (b< x 0) (b- 0 x) x))
+;; quotient by repeated subtraction
+(define (q-nonneg a b)
+  (if (b< a b) 0 (b+ 1 (q-nonneg (b- a b) b))))
 
+(define (quotient a b)
+  (if (b< a 0)
+      (if (b< b 0)
+          (q-nonneg (b- 0 a) (b- 0 b))
+          (b- 0 (q-nonneg (b- 0 a) b)))
+      (if (b< b 0)
+          (b- 0 (q-nonneg a (b- 0 b)))
+          (q-nonneg a b))))
+
+;; remainder by repeated subtraction
+(define (r-nonneg a b)
+  (if (b< a b) a (r-nonneg (b- a b) b)))
+
+(define (remainder a b)
+  (let ((absb (if (b< b 0) (b- 0 b) b)))
+    (if (b< a 0)
+        (b- 0 (r-nonneg (b- 0 a) absb))
+        (r-nonneg a absb))))
+
+;; gcd - Euclid's algorithm
+;; Reference: https://en.wikipedia.org/wiki/Euclidean_algorithm
 (define (gcd a b)
-  (let ((a (b-abs a))
-	(b (b-abs b)))
-    (if (b= b 0) a
-	(gcd b (remainder a b)))))
+  (let ((a (if (b< a 0) (b- 0 a) a))
+        (b (if (b< b 0) (b- 0 b) b)))
+    (if (b= b 0) a (gcd b (remainder a b)))))
 
 (define (lcm a b)
   (if (or (b= a 0) (b= b 0)) 0
-      (b-abs (b* (quotient a (gcd a b)) b))))
+      (let ((a (if (b< a 0) (b- 0 a) a))
+            (b (if (b< b 0) (b- 0 b) b)))
+        (quotient (b* a b) (gcd a b)))))
 
-(define (quotient a b) (s48-quotient a b))
-(define (remainder a b) (s48-remainder a b))
-
+;; Reduce n/d to lowest terms; keep denominator positive; return integer if d=1
 (define (simplify-rational n d)
-  (if (b= d 0) (error "Division by zero")
-      (let ((g (gcd n d)))
-	(let ((n1 (quotient n g))
-	      (d1 (quotient d g)))
-	  (let ((n2 (if (b< d1 0) (b- 0 n1) n1))
-		(d2 (if (b< d1 0) (b- 0 d1) d1)))
-	    (if (b= d2 1) n2
-		(list 'rational n2 d2)))))))
+  (let ((g (gcd n d)))
+    (let ((n (quotient n g))
+          (d (quotient d g)))
+      (if (b< d 0)
+          (let ((n (b- 0 n)) (d (b- 0 d)))
+            (if (b= d 1) n (list 'rational n d)))
+          (if (b= d 1) n (list 'rational n d))))))
 
-;; Redefine arithmetic
+;; Binary arithmetic
 (define (add2 x y)
-  (simplify-rational (b+ (b* (numerator x) (denominator y))
-			 (b* (numerator y) (denominator x)))
-		     (b* (denominator x) (denominator y))))
-
-(define (+ . l)
-  (if (null? l) 0
-      (let loop ((res (car l)) (rest (cdr l)))
-	(if (null? rest) res
-	    (loop (add2 res (car rest)) (cdr rest))))))
-
-(define (mul2 x y)
-  (simplify-rational (b* (numerator x) (numerator y))
-		     (b* (denominator x) (denominator y))))
-
-(define (* . l)
-  (if (null? l) 1
-      (let loop ((res (car l)) (rest (cdr l)))
-	(if (null? rest) res
-	    (loop (mul2 res (car rest)) (cdr rest))))))
+  (simplify-rational
+   (b+ (b* (numerator x) (denominator y))
+       (b* (numerator y) (denominator x)))
+   (b* (denominator x) (denominator y))))
 
 (define (sub2 x y)
-  (simplify-rational (b- (b* (numerator x) (denominator y))
-			 (b* (numerator y) (denominator x)))
-		     (b* (denominator x) (denominator y))))
+  (simplify-rational
+   (b- (b* (numerator x) (denominator y))
+       (b* (numerator y) (denominator x)))
+   (b* (denominator x) (denominator y))))
 
-(define (- x . l)
-  (if (null? l)
-      (simplify-rational (b- 0 (numerator x)) (denominator x))
-      (let loop ((res x) (rest l))
-	(if (null? rest) res
-	    (loop (sub2 res (car rest)) (cdr rest))))))
+(define (mul2 x y)
+  (simplify-rational
+   (b* (numerator x) (numerator y))
+   (b* (denominator x) (denominator y))))
 
 (define (div2 x y)
-  (simplify-rational (b* (numerator x) (denominator y))
-		     (b* (denominator x) (numerator y))))
+  (simplify-rational
+   (b* (numerator x) (denominator y))
+   (b* (denominator x) (numerator y))))
 
-(define (/ x . l)
-  (if (null? l)
+;; N-ary arithmetic
+(define (+ . args)
+  (if (null? args) 0
+      (let loop ((r (car args)) (rest (cdr args)))
+        (if (null? rest) r (loop (add2 r (car rest)) (cdr rest))))))
+
+(define (- x . rest)
+  (if (null? rest)
+      (simplify-rational (b- 0 (numerator x)) (denominator x))
+      (let loop ((r x) (rest rest))
+        (if (null? rest) r (loop (sub2 r (car rest)) (cdr rest))))))
+
+(define (* . args)
+  (if (null? args) 1
+      (let loop ((r (car args)) (rest (cdr args)))
+        (if (null? rest) r (loop (mul2 r (car rest)) (cdr rest))))))
+
+(define (/ x . rest)
+  (if (null? rest)
       (simplify-rational (denominator x) (numerator x))
-      (let loop ((res x) (rest l))
-	(if (null? rest) res
-	    (loop (div2 res (car rest)) (cdr rest))))))
+      (let loop ((r x) (rest rest))
+        (if (null? rest) r (loop (div2 r (car rest)) (cdr rest))))))
 
-;; Comparisons
+;; Binary comparison helpers (valid when denominators are positive)
 (define (num= x y)
   (b= (b* (numerator x) (denominator y))
       (b* (numerator y) (denominator x))))
-
-(define (= x y . l)
-  (if (null? l) (num= x y)
-      (and (num= x y) (apply = (cons y l)))))
 
 (define (num< x y)
   (b< (b* (numerator x) (denominator y))
       (b* (numerator y) (denominator x))))
 
-(define (< x y . l)
-  (if (null? l) (num< x y)
-      (and (num< x y) (apply < (cons y l)))))
+;; N-ary comparisons
+(define (= x y . rest)
+  (if (num= x y)
+      (if (null? rest) #t (apply = (cons y rest)))
+      #f))
 
-(define (> x y . l)
-  (if (null? l) (num< y x)
-      (and (num< y x) (apply > (cons y l)))))
+(define (< x y . rest)
+  (if (num< x y)
+      (if (null? rest) #t (apply < (cons y rest)))
+      #f))
 
-(define (<= x y . l)
-  (if (null? l) (or (num= x y) (num< x y))
-      (and (<= x y) (apply <= (cons y l)))))
+(define (> x y . rest)
+  (if (num< y x)
+      (if (null? rest) #t (apply > (cons y rest)))
+      #f))
 
-(define (>= x y . l)
-  (if (null? l) (or (num= x y) (num< y x))
-      (and (>= x y) (apply >= (cons y l)))))
+(define (<= x y . rest)
+  (if (num< y x) #f
+      (if (null? rest) #t (apply <= (cons y rest)))))
 
-(define (zero? x) (= x 0))
-(define (positive? x) (< 0 x))
-(define (negative? x) (< x 0))
+(define (>= x y . rest)
+  (if (num< x y) #f
+      (if (null? rest) #t (apply >= (cons y rest)))))
 
-(define (abs x)
-  (if (negative? x) (- x) x))
+;; Numeric predicates
+(define (zero? x) (num= x 0))
+(define (positive? x) (num< 0 x))
+(define (negative? x) (num< x 0))
+(define (abs x) (if (negative? x) (- x) x))
 
+(define (max x . rest)
+  (if (null? rest) x
+      (let ((y (car rest)))
+        (apply max (cons (if (num< x y) y x) (cdr rest))))))
+
+(define (min x . rest)
+  (if (null? rest) x
+      (let ((y (car rest)))
+        (apply min (cons (if (num< y x) y x) (cdr rest))))))
+
+(define (not x) (if x #f #t))
+
+;; Equality
 (define (eqv? x y)
-  (cond ((and (number? x) (number? y)) (= x y))
-	(else (eq? x y))))
+  (if (number? x)
+      (if (number? y) (num= x y) #f)
+      (eq? x y)))
 
 (define (equal? x y)
-  (cond ((pair? x) (and (pair? y)
-			(equal? (car x) (car y))
-			(equal? (cdr x) (cdr y))))
-	((and (number? x) (number? y)) (= x y))
-	(else (eq? x y))))
+  (if (number? x)
+      (if (number? y) (num= x y) #f)
+      (if (pair? x)
+          (if (pair? y)
+              (if (equal? (car x) (car y)) (equal? (cdr x) (cdr y)) #f)
+              #f)
+          (eq? x y))))
 
-(define (assq obj alist)
+;; Association lists
+(define (assq key alist)
   (if (null? alist) #f
-      (if (eq? obj (caar alist)) (car alist)
-	  (assq obj (cdr alist)))))
+      (if (eq? key (car (car alist))) (car alist)
+          (assq key (cdr alist)))))
 
-(define (assv obj alist)
+(define (assv key alist)
   (if (null? alist) #f
-      (if (eqv? obj (caar alist)) (car alist)
-	  (assv obj (cdr alist)))))
+      (if (eqv? key (car (car alist))) (car alist)
+          (assv key (cdr alist)))))
 
-(define (assoc obj alist)
+(define (assoc key alist)
   (if (null? alist) #f
-      (if (equal? obj (caar alist)) (car alist)
-	  (assoc obj (cdr alist)))))
+      (if (equal? key (car (car alist))) (car alist)
+          (assoc key (cdr alist)))))
 
+;; Write: prints rationals as n/d, lists on one line
 (define (w x)
-  (cond ((rational? x)
-	 (if (integer? x) (write x)
-	     (begin (write (numerator x)) (display "/") (write (denominator x)))))
-	((pair? x)
-	 (display "(")
-	 (w (car x))
-	 (let loop ((l (cdr x)))
-	   (cond ((null? l) (display ")"))
-		 ((pair? l) (display " ") (w (car l)) (loop (cdr l)))
-		 (else (display " . ") (w l) (display ")")))))
-	(else (write x))))
+  (if (number? x)
+      (if (integer? x)
+          (write x)
+          (begin (write (numerator x)) (display "/") (write (denominator x))))
+      (if (pair? x)
+          (begin (display "(") (w (car x)) (w-rest (cdr x)) (display ")"))
+          (write x))))
 
-;; Copy over other definitions from original ini.scm
-(define (not b) (if b #f #t))
-(define (and x y) (if x y #f))
-(define (or x y) (if x #t y))
+(define (w-rest x)
+  (if (null? x) '()
+      (if (pair? x)
+          (begin (display " ") (w (car x)) (w-rest (cdr x)))
+          (begin (display " . ") (w x)))))
 
+;; Car/cdr combinations
 (define (caar x) (car (car x)))
 (define (cadr x) (car (cdr x)))
 (define (cdar x) (cdr (car x)))
@@ -203,19 +240,17 @@
 (define (cdddar x) (cdr (cdr (cdr (car x)))))
 (define (cddddr x) (cdr (cdr (cdr (cdr x)))))
 
-(define (list . l) l)
+;; List operations
+(define (list . args) args)
 
-(define (length l)
-  (if (null? l) 0
-      (b+ 1 (length (cdr l)))))
+(define (length lst)
+  (if (null? lst) 0
+      (b+ 1 (length (cdr lst)))))
 
-(define (map f l)
-  (if (null? l) '()
-      (cons (f (car l)) (map f (cdr l)))))
+(define (map f lst)
+  (if (null? lst) '()
+      (cons (f (car lst)) (map f (cdr lst)))))
 
-(define (for-each f l)
-  (if (null? l) '()
-      (begin (f (car l)) (for-each f (cdr l)))))
-
-(define (eof-object? x)
-  (eq? x 'end-of-file))
+(define (for-each f lst)
+  (if (null? lst) '()
+      (begin (f (car lst)) (for-each f (cdr lst)))))

@@ -7,8 +7,6 @@
 (define s48-< <)
 (define s48-integer? integer?)
 (define s48-rational? rational?)
-(define s48-quotient quotient)
-(define s48-remainder remainder)
 (define number? s48-integer?)
 (define rational? s48-integer?)
 
