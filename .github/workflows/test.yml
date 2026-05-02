@@ -9,7 +9,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install scheme48
-        run: sudo apt-get install -y scheme48
+        run: sudo apt-get update && sudo apt-get install -y scheme48
 
       - name: Run tests
         run: bash runtests3
