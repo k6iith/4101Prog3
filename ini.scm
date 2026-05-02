@@ -1,4 +1,4 @@
-(define (integer? x) (number? x))
+(define (integer? x) (s48-integer? x))
 
 (define (rational? x)
   (or (integer? x)
@@ -35,6 +35,9 @@
 (define (lcm a b)
   (if (or (b= a 0) (b= b 0)) 0
       (b-abs (b* (quotient a (gcd a b)) b))))
+
+(define (quotient a b) (s48-quotient a b))
+(define (remainder a b) (s48-remainder a b))
 
 (define (simplify-rational n d)
   (if (b= d 0) (error "Division by zero")
